@@ -2,7 +2,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import List, Tuple
 
-from .tts import BaseTTS
+from .tts import BaseTTSProvider
 from .theme import BaseThemeProvider
 from .dialogue import BaseDialogueProvider
 
@@ -16,7 +16,7 @@ class SynthExample:
 
 class SynthDataset:
     def __init__(self, theme_provider: BaseThemeProvider, dialogue_provider: BaseDialogueProvider,
-                 tts_provider: BaseTTS):
+                 tts_provider: BaseTTSProvider):
         self.theme_provider = theme_provider
         self.dialogue_provider = dialogue_provider
         self.tts_provider = tts_provider

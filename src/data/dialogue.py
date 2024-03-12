@@ -1,6 +1,5 @@
 from typing import List, Tuple
 
-
 class BaseDialogueProvider:
     def generate(self, theme: str) -> List[Tuple[str, str]]:
         pass
