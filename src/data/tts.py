@@ -24,4 +24,4 @@ class LocalTTSProvider(BaseTTSProvider):
         with torch.no_grad():
             output = self.model(**inputs).waveform
 
-        return output.cpu().numpy()
+        return output.flatten().cpu().numpy()
