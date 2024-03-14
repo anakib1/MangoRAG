@@ -96,7 +96,7 @@ class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
-        self.model = AutoModelForCausalLM.from_pretrained(model_id, device_map=self.device)
+        self.model = AutoModelForCausalLM.from_pretrained(model_id, device_map=self.device, torch_dtype=torch.float16)
         self.parser = JsonOutputParser()
 
     def generate(self, theme: str):
@@ -104,7 +104,7 @@ class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
         input_ids = {k: v.to(self.device) for k, v in input_ids.items()}
         with torch.no_grad():
             outputs = self.model.generate(**input_ids, max_length=3000, temperature=0.1, do_sample=True)
-        output_str = self.tokenizer.decode(outputs)[0]
+        output_str = self.tokenizer.batch_decode(outputs)[0]
 
         try:
             pattern = "```json(.*)```"
