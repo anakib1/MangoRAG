@@ -15,5 +15,4 @@ class InMemoryThemeProvider(BaseThemeProvider):
 class FileThemeProvider(InMemoryThemeProvider):
     def __init__(self, filepath: str) -> None:
         with open(filepath, 'r') as f:
-            super().__init__(f.readlines())
-        
+            super().__init__([x.strip() for x in f.readlines()])

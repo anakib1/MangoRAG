@@ -1,11 +1,14 @@
 from typing import List, Tuple
+
+import torch
 from mistralai.client import MistralClient
 from mistralai.models.chat_completion import ChatMessage
 import json
-from openai import OpenAI
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
+from huggingface_hub import login
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
 class BaseDialogueProvider:
@@ -20,19 +23,23 @@ class DummyDialogueProvider(BaseDialogueProvider):
 
 class PromptProvider:
     def __init__(self):
-        self.prompt_template = ("Generate dialogue with two people - Bob and Alice. They should discuss the following "
-                                "theme: {theme}. The dialogue should contain at least 3 utterances from each speaker. "
-                                "Please generate the dialogue in the following json format:")
-        self.example = r"""[
-        {"speaker": ... 
-        "phrase" : ...
-        },
-        ...
-        ]
-        """
+        self.prompt_template = "Generate dialogue with two people - Bob and Alice. They should discuss the following " + \
+                               "theme: {theme}. The dialogue should contain at least 4 utterances from each speaker. " + \
+                               "Please generate the dialogue in the following list json format:" + \
+                               """[[
+                                   {{"speaker": ... 
+                                   "phrase" : ...
+                                   }},
+                                   {{"speaker": ...
+                                   "phrase" : ...
+                                   }}
+                                   ...
+                                   ]]
+                                   You must return **ONLY** json format.
+                                   """
 
     def provide_prompt(self, theme: str) -> str:
-        return self.prompt_template.format(theme=theme) + self.example
+        return self.prompt_template.format(theme=theme)
 
 
 class MistralDialogueProvider(BaseDialogueProvider, PromptProvider):
@@ -53,9 +60,8 @@ class MistralDialogueProvider(BaseDialogueProvider, PromptProvider):
         return [(x['speaker'], x['phrase']) for x in json.loads(chat_response)]
 
 
-class OpenaiDialogueProvider(BaseDialogueProvider, PromptProvider):
+class OpenaiDialogueProvider(BaseDialogueProvider):
     def __init__(self, host: str = "http://localhost:8000/v1"):
-        super().__init__()
         chat = ChatOpenAI(openai_api_base=host, openai_api_key='none')
         prompt = PromptTemplate.from_template(
             "Generate dialogue with two people - Bob and Alice. They should discuss the following "
@@ -70,6 +76,7 @@ class OpenaiDialogueProvider(BaseDialogueProvider, PromptProvider):
                 }}
                 ...
                 ]]
+                You must return **ONLY** json format.
                 """
         )
         parser = JsonOutputParser()
@@ -78,3 +85,22 @@ class OpenaiDialogueProvider(BaseDialogueProvider, PromptProvider):
 
     def generate(self, theme: str):
         return [(x['speaker'], x['phrase']) for x in self.chain.invoke({'theme': theme})]
+
+
+class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
+    def __init__(self, model_id: str, hf_token: str):
+        super().__init__()
+        login(token=hf_token)
+
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+        self.model = AutoModelForCausalLM.from_pretrained(model_id, device_map=self.device)
+
+    def generate(self, theme: str):
+        input_ids = self.tokenizer([self.provide_prompt(theme)], return_tensors="pt")
+        input_ids = {k: v.to(self.device) for k, v in input_ids.items()}
+        with torch.no_grad():
+            outputs = self.model.generate(**input_ids, max_length=3000, temperature=0.1, do_sample=True)
+        output_str = self.tokenizer.decode(outputs)[0]
+        return output_str
