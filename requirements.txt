@@ -4,3 +4,5 @@ numpy~=1.26.4
 mistralai~=0.1.6
 openai~=1.13.3
 langchain~=0.1.12
+langchain_openai~=0.0.8
+accelerate~=0.28.0
