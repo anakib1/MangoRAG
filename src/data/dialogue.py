@@ -9,6 +9,7 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from huggingface_hub import login
 from transformers import AutoTokenizer, AutoModelForCausalLM
+import re
 
 
 class BaseDialogueProvider:
@@ -96,6 +97,7 @@ class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
         self.model = AutoModelForCausalLM.from_pretrained(model_id, device_map=self.device)
+        self.parser = JsonOutputParser()
 
     def generate(self, theme: str):
         input_ids = self.tokenizer([self.provide_prompt(theme)], return_tensors="pt")
@@ -103,4 +105,18 @@ class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
         with torch.no_grad():
             outputs = self.model.generate(**input_ids, max_length=3000, temperature=0.1, do_sample=True)
         output_str = self.tokenizer.decode(outputs)[0]
-        return output_str
+
+        try:
+            pattern = "```json(.*)```"
+            jsons = re.findall(pattern, output_str, re.DOTALL)
+            if len(jsons) == 0:
+                print('WARN: No json found in gemma output.')
+                return []
+            elif len(jsons) > 1:
+                print('WARN: Multiple json found in gemma output.')
+                return []
+            dialogue_dict = self.parser.invoke(jsons[0])
+            return [(x['speaker'], x['phrase']) for x in dialogue_dict]
+        except Exception as ex:
+            print('WARN: Unexpected exception occurred: ', ex)
+            return []
