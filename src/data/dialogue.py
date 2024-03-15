@@ -17,7 +17,7 @@ class BaseDialogueProvider:
         pass
 
     def batch_generate(self, themes: List[str]) -> List[List[Tuple[str, str]]]:
-        pass
+        return [self.generate(theme) for theme in themes]
 
 
 class DummyDialogueProvider(BaseDialogueProvider):

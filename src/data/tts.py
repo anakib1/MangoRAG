@@ -24,7 +24,7 @@ class BaseTTSProvider:
         :param speakers: speaker identities
         :return: List of np arrays with audio in 16_000 sampling rate
         """
-        pass
+        return [self.generate(text, speaker) for text, speaker in zip(texts, speakers)]
 
 
 class DummyTTSProvider(BaseTTSProvider):
