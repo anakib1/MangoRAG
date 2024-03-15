@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Any
 
 import torch
 from mistralai.client import MistralClient
@@ -96,14 +96,19 @@ class OpenaiDialogueProvider(BaseDialogueProvider):
 
 
 class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
-    def __init__(self, model_id: str, hf_token: str):
+    def __init__(self, model_id: str, hf_token: str, quant_config: Any = None):
         super().__init__()
         login(token=hf_token)
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
-        self.model = AutoModelForCausalLM.from_pretrained(model_id, device_map=self.device, torch_dtype=torch.float16)
+        if quant_config is None:
+            self.model = AutoModelForCausalLM.from_pretrained(model_id, device_map=self.device,
+                                                              torch_dtype=torch.float16)
+        else:
+            self.model = AutoModelForCausalLM.from_pretrained(model_id, device_map=self.device,
+                                                              quantization_config=quant_config)
         self.parser = JsonOutputParser()
 
     def _capture_json(self, content: str) -> List[Tuple[str, str]]:
@@ -111,10 +116,10 @@ class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
             pattern = "```json(.*)```"
             jsons = re.findall(pattern, content, re.DOTALL)
             if len(jsons) == 0:
-                print('WARN: No json found in given content.')
+                print(f'WARN: No json found in given content. Content={content}')
                 return []
             elif len(jsons) > 1:
-                print('WARN: Multiple json found in gemma output.')
+                print(f'WARN: Multiple json found in gemma output. Content={content}')
                 return []
             dialogue_dict = self.parser.invoke(jsons[0])
             return [(x['speaker'], x['phrase']) for x in dialogue_dict]
@@ -135,6 +140,6 @@ class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
                                    return_tensors="pt")
         input_ids = {k: v.to(self.device) for k, v in input_ids.items()}
         with torch.no_grad():
-            outputs = self.model.generate(**input_ids, max_length=3000, temperature=0.1, do_sample=True)
+            outputs = self.model.generate(**input_ids, max_new_tokens=1500, temperature=0.1, do_sample=True)
         output_strs = self.tokenizer.batch_decode(outputs)
         return [self._capture_json(output) for output in output_strs]
