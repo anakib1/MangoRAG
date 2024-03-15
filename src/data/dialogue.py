@@ -131,7 +131,7 @@ class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
         return self._capture_json(output_str)
 
     def batch_generate(self, themes: List[str]) -> List[List[Tuple[str, str]]]:
-        input_ids = self.tokenizer([self.provide_prompt(theme) for theme in themes], truncation=True,
+        input_ids = self.tokenizer([self.provide_prompt(theme) for theme in themes], padding=True,
                                    return_tensors="pt")
         input_ids = {k: v.to(self.device) for k, v in input_ids.items()}
         with torch.no_grad():
