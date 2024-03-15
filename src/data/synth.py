@@ -29,6 +29,7 @@ class SynthDataset:
         for speaker, utterance in dialogue:
             audio.append(self.tts_provider.generate(text=utterance, speaker=speaker))
             audio.append([0] * 8_000)
-        audio.pop()  # remove last silence
+        if len(audio) > 0:
+            audio.pop()  # remove last silence
 
         return SynthExample(audio=np.concatenate(audio), theme=theme, dialogue=dialogue)
