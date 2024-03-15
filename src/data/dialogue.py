@@ -3,7 +3,6 @@ from typing import List, Tuple, Any
 import torch
 from mistralai.client import MistralClient
 from mistralai.models.chat_completion import ChatMessage
-import json
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
@@ -52,6 +51,7 @@ class MistralDialogueProvider(BaseDialogueProvider, PromptProvider):
         self._token = token
         self.client = MistralClient(api_key=token)
         self.model_id = model_id
+        self.parser = JsonOutputParser()
 
     def generate(self, theme: str):
         messages = [
@@ -61,7 +61,12 @@ class MistralDialogueProvider(BaseDialogueProvider, PromptProvider):
             model=self.model_id,
             messages=messages,
         ).choices[0].message.content
-        return [(x['speaker'], x['phrase']) for x in json.loads(chat_response)]
+        try:
+            dialogue = self.parser.invoke(chat_response)
+        except Exception:
+            return []
+
+        return [(x['speaker'], x['phrase']) for x in dialogue]
 
 
 class OpenaiDialogueProvider(BaseDialogueProvider):
@@ -88,7 +93,10 @@ class OpenaiDialogueProvider(BaseDialogueProvider):
         self.chain = prompt | chat | parser
 
     def generate(self, theme: str):
-        return [(x['speaker'], x['phrase']) for x in self.chain.invoke({'theme': theme})]
+        try:
+            return [(x['speaker'], x['phrase']) for x in self.chain.invoke({'theme': theme})]
+        except Exception:
+            return []
 
 
 class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
@@ -117,7 +125,7 @@ class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
                 return None
             dialogue_dict = self.parser.invoke(jsons[0])
             return [(x['speaker'], x['phrase']) for x in dialogue_dict]
-        except Exception as ex:
+        except Exception as ignored:
             return None
 
     def _capture_json_dirty(self, content: str) -> List[Tuple[str, str]] | Any:
