@@ -79,7 +79,7 @@ class SynthDataset(SynthConfig):
 
         audio_per_dialogue = []
         for dial_id, audio in zip(dialogue_id, audio_chunks):
-            if dial_id == len(audio_per_dialogue):
+            while dial_id >= len(audio_per_dialogue):
                 audio_per_dialogue.append([])
             audio_per_dialogue[-1].append(audio)
 
