@@ -21,6 +21,8 @@ class SynthConfig:
     pause_len_min: int = 0.5
     pause_len_max: int = 1.2
     sampling_rate: int = 16000
+    tts_batch_size: int = 4
+    generate_audio: bool = True
 
 
 class SynthDataset(SynthConfig):
@@ -53,28 +55,15 @@ class SynthDataset(SynthConfig):
 
         return SynthExample(audio=self._merge_dialogue(audio), theme=theme, dialogue=dialogue)
 
-    def batch_generate(self, batch_size: int, tts_batch_size: int = None) -> List[SynthExample]:
-        """
-        Generates batch of examples.
-        :param batch_size: number of examples to generate
-        :param tts_batch_size: batch size for tts model
-        :return: list of SynthExample - resulting batch
-        """
-
-        if tts_batch_size is None:
-            tts_batch_size = batch_size
-
-        themes = self.theme_provider.batch_generate(batch_size)
-        dialogues = self.dialogue_provider.batch_generate(themes)
-
+    def generate_audio(self, dialogues: List[List[Tuple[str, str]]]) -> np.array:
         dialogue_chunks = sum(dialogues, [])
         dialogue_id = []
         for i, dialogue in enumerate(dialogues):
             dialogue_id.extend([i] * len(dialogue))
 
         audio_chunks = []
-        for i in range(0, len(dialogue_chunks), tts_batch_size):
-            speakers, phrases = list(zip(*dialogue_chunks[i:i + tts_batch_size]))
+        for i in range(0, len(dialogue_chunks), self.tts_batch_size):
+            speakers, phrases = list(zip(*dialogue_chunks[i:i + self.tts_batch_size]))
             audio_chunks.extend(self.tts_provider.batch_generate(phrases, speakers))
 
         audio_per_dialogue = []
@@ -83,5 +72,22 @@ class SynthDataset(SynthConfig):
                 audio_per_dialogue.append([])
             audio_per_dialogue[-1].append(audio)
 
-        return [SynthExample(audio=self._merge_dialogue(audio), theme=theme, dialogue=dialogue)
+        return [self._merge_dialogue(audio) for audio in audio_per_dialogue]
+
+    def batch_generate(self, batch_size: int) -> List[SynthExample]:
+        """
+        Generates batch of examples.
+        :param batch_size: number of examples to generate
+        :param tts_batch_size: batch size for tts model
+        :return: list of SynthExample - resulting batch
+        """
+        themes = self.theme_provider.batch_generate(batch_size)
+        dialogues = self.dialogue_provider.batch_generate(themes)
+
+        if self.generate_audio:
+            audio_per_dialogue = self.generate_audio(dialogues)
+        else:
+            audio_per_dialogue = [np.zeros(self.sampling_rate) for _ in range(batch_size)]
+
+        return [SynthExample(audio=audio, theme=theme, dialogue=dialogue)
                 for audio, theme, dialogue in zip(audio_per_dialogue, themes, dialogues)]
