@@ -43,7 +43,7 @@ class SynthDataset(SynthConfig):
                                                  int(self.sampling_rate * self.pause_len_max))))
             audio.append(chunk)
 
-        return np.concatenate(audio)
+        return np.concatenate(audio) if len(audio) > 0 else np.zeros(self.sampling_rate)
 
     def generate(self) -> SynthExample:
         theme = self.theme_provider.generate()

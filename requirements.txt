@@ -9,3 +9,4 @@ accelerate~=0.28.0
 tqdm~=4.66.2
 datasets~=2.18.0
 torchaudio~=2.2.1
+bitsandbytes~=0.42.0
