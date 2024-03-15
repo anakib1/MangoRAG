@@ -24,10 +24,6 @@ class DummyDialogueProvider(BaseDialogueProvider):
     def generate(self, theme: str) -> List[Tuple[str, str]]:
         return [('Alice', 'Hello!, how are you'), ('Bob', 'Hello, I am fine, what about you?'), ('Alice', 'I am sick.')]
 
-    def batch_generate(self, themes: List[str]) -> List[List[Tuple[str, str]]]:
-        return [[('Alice', 'Hello!, how are you'), ('Bob', 'Hello, I am fine, what about you?')],
-                [('Bob', 'Hello, I am'), ('Alice', 'i am not')]]
-
 
 class PromptProvider:
     def __init__(self):
