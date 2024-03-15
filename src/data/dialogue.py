@@ -16,10 +16,17 @@ class BaseDialogueProvider:
     def generate(self, theme: str) -> List[Tuple[str, str]]:
         pass
 
+    def batch_generate(self, themes: List[str]) -> List[List[Tuple[str, str]]]:
+        pass
+
 
 class DummyDialogueProvider(BaseDialogueProvider):
     def generate(self, theme: str) -> List[Tuple[str, str]]:
         return [('Alice', 'Hello!, how are you'), ('Bob', 'Hello, I am fine, what about you?'), ('Alice', 'I am sick.')]
+
+    def batch_generate(self, themes: List[str]) -> List[List[Tuple[str, str]]]:
+        return [[('Alice', 'Hello!, how are you'), ('Bob', 'Hello, I am fine, what about you?')],
+                [('Bob', 'Hello, I am'), ('Alice', 'i am not')]]
 
 
 class PromptProvider:
@@ -99,18 +106,12 @@ class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
         self.model = AutoModelForCausalLM.from_pretrained(model_id, device_map=self.device, torch_dtype=torch.float16)
         self.parser = JsonOutputParser()
 
-    def generate(self, theme: str):
-        input_ids = self.tokenizer([self.provide_prompt(theme)], return_tensors="pt")
-        input_ids = {k: v.to(self.device) for k, v in input_ids.items()}
-        with torch.no_grad():
-            outputs = self.model.generate(**input_ids, max_length=3000, temperature=0.1, do_sample=True)
-        output_str = self.tokenizer.batch_decode(outputs)[0]
-
+    def _capture_json(self, content: str) -> List[Tuple[str, str]]:
         try:
             pattern = "```json(.*)```"
-            jsons = re.findall(pattern, output_str, re.DOTALL)
+            jsons = re.findall(pattern, content, re.DOTALL)
             if len(jsons) == 0:
-                print('WARN: No json found in gemma output.')
+                print('WARN: No json found in given content.')
                 return []
             elif len(jsons) > 1:
                 print('WARN: Multiple json found in gemma output.')
@@ -120,3 +121,19 @@ class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
         except Exception as ex:
             print('WARN: Unexpected exception occurred: ', ex)
             return []
+
+    def generate(self, theme: str):
+        input_ids = self.tokenizer([self.provide_prompt(theme)], return_tensors="pt")
+        input_ids = {k: v.to(self.device) for k, v in input_ids.items()}
+        with torch.no_grad():
+            outputs = self.model.generate(**input_ids, max_length=3000, temperature=0.1, do_sample=True)
+        output_str = self.tokenizer.batch_decode(outputs)[0]
+        return self._capture_json(output_str)
+
+    def batch_generate(self, themes: List[str]) -> List[List[Tuple[str, str]]]:
+        input_ids = self.tokenizer([self.provide_prompt(theme) for theme in themes], return_tensors="pt")
+        input_ids = {k: v.to(self.device) for k, v in input_ids.items()}
+        with torch.no_grad():
+            outputs = self.model.generate(**input_ids, max_length=3000, temperature=0.1, do_sample=True)
+        output_strs = self.tokenizer.batch_decode(outputs)
+        return [self._capture_json(output) for output in output_strs]
