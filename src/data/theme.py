@@ -7,7 +7,7 @@ class BaseThemeProvider:
         pass
 
     def batch_generate(self, batch_size: int) -> List[str]:
-        pass
+        return [self.generate() for _ in range(batch_size)]
 
 
 class InMemoryThemeProvider(BaseThemeProvider):
