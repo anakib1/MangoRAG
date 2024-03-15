@@ -22,7 +22,7 @@ class SynthConfig:
     pause_len_max: int = 1.2
     sampling_rate: int = 16000
     tts_batch_size: int = 4
-    generate_audio: bool = True
+    do_generate_audio: bool = True
 
 
 class SynthDataset(SynthConfig):

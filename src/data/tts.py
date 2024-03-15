@@ -5,6 +5,9 @@ import torchaudio.transforms
 from transformers import VitsModel, AutoTokenizer, BarkModel, BarkProcessor
 import torch
 from typing import List
+from openai import OpenAI
+import torchaudio
+import os
 
 
 class BaseTTSProvider:
@@ -46,8 +49,24 @@ class VitsTTSProvider(BaseTTSProvider):
         return output.flatten().cpu().numpy()
 
 
+class SpeakerMapper:
+    def __init__(self, speakers_bank: List[str]):
+        self.speakers_bank = speakers_bank
+        self.speakers_map = {}
+
+    def map(self, speaker: str) -> str:
+        if speaker not in self.speakers_map:
+            available_speakers = list(set(self.speakers_bank) - set(self.speakers_map.values()))
+            if len(available_speakers) == 0:
+                print('No available_speakers speaker found. Reusing from bank')
+                available_speakers = self.speakers_bank
+            self.speakers_map[speaker] = random.choice(available_speakers)
+
+        return self.speakers_map[speaker]
+
+
 class BarkTTSProvider(BaseTTSProvider):
-    speaker_emb = {
+    speakers = {
         "en": [f'v2/en_speaker_{i}' for i in range(10)],
         "ru": [f'v2/ru_speaker_{i}' for i in range(10)]
     }
@@ -60,8 +79,7 @@ class BarkTTSProvider(BaseTTSProvider):
         self.processor = BarkProcessor.from_pretrained(model_id)
         self.convert24to16khz = torchaudio.transforms.Resample(24_000, 16_000)
 
-        self.speakers_bank = [f'v2/en_speaker_{i}' for i in range(10)]
-        self.speakers_map = {}
+        self.speakers_bank = SpeakerMapper([f'v2/en_speaker_{i}' for i in range(10)])
 
     def batch_processor(self, texts, voice_presets: list[str]):
         list_dict = [self.processor(text, return_tensors="pt", voice_preset=preset) for preset, text in
@@ -78,15 +96,7 @@ class BarkTTSProvider(BaseTTSProvider):
         return ans_dict
 
     def generate(self, text: str, speaker: str) -> np.array:
-        if speaker not in self.speakers_map:
-            available_speakers = list(set(self.speakers_bank) - set(self.speakers_map.values()))
-            if len(available_speakers) == 0:
-                print('No available_speakers speaker found. Reusing from bank')
-                available_speakers = self.speakers_bank
-            self.speakers_map[speaker] = random.choice(available_speakers)
-
-        speaker_preset = self.speakers_map[speaker]
-        inputs = self.processor(text, voice_preset=speaker_preset)
+        inputs = self.processor(text, voice_preset=self.speakers_bank.map(speaker))
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         with torch.no_grad():
             speech_output = self.model.generate(**inputs)
@@ -102,9 +112,9 @@ class BarkTTSProvider(BaseTTSProvider):
         batch_size = len(texts)
 
         if True or speakers is None:
-            speakers_preset = [random.choice(BarkTTSProvider.speaker_emb[lang]) for i in range(batch_size)]
+            speakers_preset = [random.choice(BarkTTSProvider.speakers[lang]) for i in range(batch_size)]
         else:
-            speakers_preset = [BarkTTSProvider.speaker_emb[lang][speaker] for speaker in speakers]
+            speakers_preset = [BarkTTSProvider.speakers[lang][speaker] for speaker in speakers]
 
         inputs = self.batch_processor(texts, speakers_preset)
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
@@ -117,3 +127,37 @@ class BarkTTSProvider(BaseTTSProvider):
             audio_array = self.convert24to16khz(audio_array.cpu()).numpy()
             list_speech.append(audio_array)
         return list_speech
+
+
+class OpenAITTSProvider(BaseTTSProvider):
+    speakers: list[str] = [
+        "alloy",
+        "echo",
+        "fable",
+        "onyx",
+        "nova",
+        "shimmer"
+    ]
+
+    def __init__(self, api_token: str, cached_file: str = "./speech.mp3"):
+        self.client = OpenAI(
+            api_key=api_token
+        )
+        self.cached_file = cached_file
+        self.convert24to16khz = torchaudio.transforms.Resample(24_000, 16_000)
+        self.speaker_bank = SpeakerMapper(OpenAITTSProvider.speakers)
+
+    def generate(self, text: str, speaker: str = "alloy") -> np.array:
+        speaker = self.speaker_bank.map(speaker)
+        if speaker not in OpenAITTSProvider.speakers:
+            raise Exception("the speaker is not in the list of valid speakers")
+        response = self.client.audio.speech.create(
+            model="tts-1",
+            voice=speaker,
+            input=text
+        )
+        response.stream_to_file(self.cached_file)
+        audio, rate = torchaudio.load(self.cached_file)
+        audio = self.convert24to16khz(audio).numpy()
+        os.remove(self.cached_file)
+        return audio.flatten()
