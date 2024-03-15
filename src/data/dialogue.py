@@ -111,21 +111,39 @@ class HuggingfaceDialogueProvider(BaseDialogueProvider, PromptProvider):
                                                               quantization_config=quant_config)
         self.parser = JsonOutputParser()
 
-    def _capture_json(self, content: str) -> List[Tuple[str, str]]:
+    def _capture_json_clean(self, content: str) -> List[Tuple[str, str]] | None:
         try:
             pattern = "```json(.*)```"
             jsons = re.findall(pattern, content, re.DOTALL)
             if len(jsons) == 0:
-                print(f'WARN: No json found in given content. Content={content}')
-                return []
+                return None
             elif len(jsons) > 1:
-                print(f'WARN: Multiple json found in gemma output. Content={content}')
-                return []
+                return None
             dialogue_dict = self.parser.invoke(jsons[0])
             return [(x['speaker'], x['phrase']) for x in dialogue_dict]
         except Exception as ex:
-            print('WARN: Unexpected exception occurred: ', ex)
-            return []
+            return None
+
+    def _capture_json_dirty(self, content: str) -> List[Tuple[str, str]] | Any:
+        pattern = r'(?:\[\]|\[\s*?{.*?}\s*\])'
+        jsons = re.findall(pattern, content, re.DOTALL)
+        for json_ex in jsons[::-1]:
+            try:
+                dialogue_dict = self.parser.invoke(json_ex)
+                return [(x['speaker'], x['phrase']) for x in dialogue_dict]
+            except Exception as ignored:
+                continue
+        return None
+
+    def _capture_json(self, content: str) -> List[Tuple[str, str]]:
+        clean_json = self._capture_json_clean(content)
+        if clean_json is not None:
+            return clean_json
+        dirty_json = self._capture_json_dirty(content)
+        if dirty_json is not None:
+            return dirty_json
+        print(f'WARN: json not found in: {content}')
+        return []
 
     def generate(self, theme: str):
         input_ids = self.tokenizer([self.provide_prompt(theme)], return_tensors="pt")
